@@ -131,42 +131,41 @@ static std::vector<int> parseVersion(const char* versionStr) {
   return versionNumbers;
 }
 
-#ifdef __unix__
+/// Find the PROJ library path on Unix-like systems
 static char* findUnixLibProjPath() {
-  // Check system-wide directories
-  const std::string systemLibPaths[] = {
-      "/usr/lib/", "/usr/bin/",
-      "/usr/local/bin/"
-      "/usr/lib/x86_64-linux-gnu/",
-      "/lib/x86_64-linux-gnu/"};
+  // Common Unix library directories to search
+  const char* commonPaths[] = {
+    "/usr/lib",
+    "/usr/local/lib",
+    "/opt/local/lib",  // MacPorts
+    "/usr/local/opt/proj/lib",  // Homebrew
+    nullptr
+  };
 
-  for (const auto& systemLibPath : systemLibPaths) {
-    std::filesystem::path binPath = systemLibPath;
+  // Common library names to search for
+  const char* libNames[] = {
+    "libproj.dylib",  // macOS
+    "libproj.so",     // Linux
+    nullptr
+  };
 
-    if (std::filesystem::is_directory(binPath) && std::filesystem::exists(binPath / "libproj.so")) {
-      char* resultPath = new char[binPath.string().size() + 1];
-      strcpy_las(resultPath, binPath.string().size() + 1, binPath.string().c_str());
-      return resultPath;
+  for (const char** path = commonPaths; *path != nullptr; ++path) {
+    std::filesystem::path libPath(*path);
+    if (!std::filesystem::is_directory(libPath)) continue;
+
+    for (const char** libName = libNames; *libName != nullptr; ++libName) {
+      std::filesystem::path fullPath = libPath / *libName;
+      if (std::filesystem::exists(fullPath)) {
+        char* resultPath = new char[libPath.string().size() + 1];
+        strcpy_las(resultPath, libPath.string().size() + 1, libPath.string().c_str());
+        LASMessage(LAS_VERBOSE, "PROJ library found at [%s]", resultPath);
+        return resultPath;
+      }
     }
   }
 
-  // Optional: Use the user's home directory if necessary
-  const char* homeDir = getHomeDirectory();
-  if (homeDir) {
-    std::filesystem::path userLibPath(homeDir);
-    userLibPath /= ".local";  // the .local/lib directory for user installations
-    userLibPath /= "lib";
-
-    if (std::filesystem::is_directory(userLibPath) && std::filesystem::exists(userLibPath / "libproj.so")) {
-      char* resultPath = new char[userLibPath.string().size() + 1];
-      strcpy_las(resultPath, userLibPath.string().size() + 1, userLibPath.string().c_str());
-      return resultPath;
-    }
-  }
-
- return nullptr;
+  return nullptr;
 }
-#endif
 
 /// Comparison function for version numbers
 static bool compareVersions(const char* v1, const char* v2) {
@@ -217,7 +216,7 @@ static char* findLatestQGISInstallationPath() {
     for (const auto& programEntry : std::filesystem::directory_iterator(defaultPaths[i])) {
       if (programEntry.is_directory()) {
         std::string directoryName = programEntry.path().filename().string();
-        // Check whether the name begins with �QGIS �
+        // Check whether the name begins with QGIS
         if (directoryName.find("QGIS ") == 0) {
           const char* dirName = directoryName.c_str();
           if (!latestVersionName || compareVersions(dirName, latestVersionName)) {
